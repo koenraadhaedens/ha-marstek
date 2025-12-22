@@ -1,0 +1,11 @@
+{
+  "domain": "marstek",
+  "name": "Marstek Battery System",
+  "codeowners": ["@marstek"],
+  "config_flow": true,
+  "documentation": "https://github.com/marstek/home-assistant-marstek",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}
