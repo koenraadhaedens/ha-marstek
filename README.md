@@ -31,7 +31,7 @@ A custom Home Assistant integration for Marstek battery systems (Venus C, Venus 
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/yourusername/ha-marstek`
+5. Add this repository URL: `https://github.com/leonscheltema/ha-marstek`
 6. Select category: "Integration"
 7. Click "Add"
 8. Search for "Marstek Battery System" in HACS
