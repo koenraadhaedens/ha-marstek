@@ -142,6 +142,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.debug("Failed to get battery status: %s", err)
 
+            # High priority power readings - every update (~30s)
             try:
                 await asyncio.sleep(_command_delay())
                 es_status = await self.api.get_es_status(**_command_kwargs())
@@ -153,19 +154,8 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.debug("Failed to get ES status: %s", err)
 
-            # Medium priority - every 5th update (150s)
-            if self.update_count % 5 == 0:
-                try:
-                    await asyncio.sleep(_command_delay())
-                    pv_status = await self.api.get_pv_status(**_command_kwargs())
-                    if pv_status:
-                        data["pv"] = pv_status
-                        self._cached_data["pv"] = pv_status
-                        self.category_last_updated["pv"] = time.time()
-                        had_success = True
-                except Exception as err:
-                    _LOGGER.debug("Failed to get PV status: %s", err)
-
+            # Medium priority - every 2nd update (60s): Energy counters and other data
+            if self.update_count % 2 == 0:
                 try:
                     await asyncio.sleep(_command_delay())
                     es_mode = await self.api.get_es_mode(**_command_kwargs())
@@ -187,6 +177,19 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                         had_success = True
                 except Exception as err:
                     _LOGGER.debug("Failed to get EM status: %s", err)
+
+            # Medium priority - every 5th update (150s)
+            if self.update_count % 5 == 0:
+                try:
+                    await asyncio.sleep(_command_delay())
+                    pv_status = await self.api.get_pv_status(**_command_kwargs())
+                    if pv_status:
+                        data["pv"] = pv_status
+                        self._cached_data["pv"] = pv_status
+                        self.category_last_updated["pv"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get PV status: %s", err)
 
             # Low priority - every 10th update (300s)
             if self.update_count % 10 == 0:
