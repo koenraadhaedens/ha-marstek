@@ -582,6 +582,27 @@ class MarstekAPI:
         max_attempts: int | None = None,
     ) -> dict | None:
         """Get WiFi status."""
+        # Try different parameter formats
+        params_options = [
+            {"id": 0},
+            {"ble_mac": "0"},
+            None,
+            {}
+        ]
+        
+        for params in params_options:
+            try:
+                result = await self.send_command(
+                    METHOD_WIFI_STATUS,
+                    params,
+                    timeout=timeout,
+                    max_attempts=1,
+                )
+                if result:
+                    return result
+            except Exception:
+                continue
+                
         return await self.send_command(
             METHOD_WIFI_STATUS,
             timeout=timeout,
@@ -608,6 +629,33 @@ class MarstekAPI:
         max_attempts: int | None = None,
     ) -> dict | None:
         """Get battery status."""
+        # Try different parameter formats for better compatibility
+        params_options = [
+            {"id": 0},
+            {"ble_mac": "0"},
+            None,
+            {}
+        ]
+        
+        last_exception = None
+        for params in params_options:
+            try:
+                result = await self.send_command(
+                    METHOD_BATTERY_STATUS,
+                    params,
+                    timeout=timeout,
+                    max_attempts=1,  # Try once with each format
+                )
+                if result:
+                    return result
+            except Exception as e:
+                last_exception = e
+                continue
+        
+        # If all formats failed, try the original way one more time
+        if last_exception:
+            _LOGGER.debug("All battery status parameter formats failed, trying default")
+        
         return await self.send_command(
             METHOD_BATTERY_STATUS,
             timeout=timeout,
@@ -634,6 +682,27 @@ class MarstekAPI:
         max_attempts: int | None = None,
     ) -> dict | None:
         """Get energy system status."""
+        # Try different parameter formats
+        params_options = [
+            {"id": 0},
+            {"ble_mac": "0"},
+            None,
+            {}
+        ]
+        
+        for params in params_options:
+            try:
+                result = await self.send_command(
+                    METHOD_ES_STATUS,
+                    params,
+                    timeout=timeout,
+                    max_attempts=1,
+                )
+                if result:
+                    return result
+            except Exception:
+                continue
+                
         return await self.send_command(
             METHOD_ES_STATUS,
             timeout=timeout,

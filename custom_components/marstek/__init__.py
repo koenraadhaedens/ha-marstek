@@ -77,6 +77,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
         self._first_update = True
         self.update_count = 0
         self.category_last_updated = {}
+        self._cached_data = {}  # Cache previous successful data
 
         super().__init__(
             hass,
@@ -96,11 +97,14 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
             had_success = False
             is_first_update = self._first_update
             
+            # Start with cached data to preserve previous values
+            data.update(self._cached_data)
+            
             def _command_kwargs() -> dict[str, Any]:
                 """Use shorter timeouts/attempts during the very first refresh."""
                 if is_first_update and not had_success:
-                    return {"timeout": min(5, 15), "max_attempts": 1}
-                return {}
+                    return {"timeout": min(8, 15), "max_attempts": 2}
+                return {"timeout": 10, "max_attempts": 3}
 
             def _command_delay() -> float:
                 """Back off a little between calls; go faster while probing initial contact."""
@@ -132,6 +136,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                 bat_status = await self.api.get_battery_status(**_command_kwargs())
                 if bat_status:
                     data["battery"] = bat_status
+                    self._cached_data["battery"] = bat_status  # Cache successful data
                     self.category_last_updated["battery"] = time.time()
                     had_success = True
             except Exception as err:
@@ -142,6 +147,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                 es_status = await self.api.get_es_status(**_command_kwargs())
                 if es_status:
                     data["es"] = es_status
+                    self._cached_data["es"] = es_status
                     self.category_last_updated["es"] = time.time()
                     had_success = True
             except Exception as err:
@@ -154,6 +160,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                     pv_status = await self.api.get_pv_status(**_command_kwargs())
                     if pv_status:
                         data["pv"] = pv_status
+                        self._cached_data["pv"] = pv_status
                         self.category_last_updated["pv"] = time.time()
                         had_success = True
                 except Exception as err:
@@ -164,6 +171,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                     es_mode = await self.api.get_es_mode(**_command_kwargs())
                     if es_mode:
                         data["es_mode"] = es_mode
+                        self._cached_data["es_mode"] = es_mode
                         self.category_last_updated["es_mode"] = time.time()
                         had_success = True
                 except Exception as err:
@@ -174,6 +182,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                     em_status = await self.api.get_em_status(**_command_kwargs())
                     if em_status:
                         data["em"] = em_status
+                        self._cached_data["em"] = em_status
                         self.category_last_updated["em"] = time.time()
                         had_success = True
                 except Exception as err:
@@ -186,6 +195,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                     wifi_status = await self.api.get_wifi_status(**_command_kwargs())
                     if wifi_status:
                         data["wifi"] = wifi_status
+                        self._cached_data["wifi"] = wifi_status
                         self.category_last_updated["wifi"] = time.time()
                         had_success = True
                 except Exception as err:
@@ -196,6 +206,7 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
                     ble_status = await self.api.get_ble_status(**_command_kwargs())
                     if ble_status:
                         data["ble"] = ble_status
+                        self._cached_data["ble"] = ble_status
                         self.category_last_updated["ble"] = time.time()
                         had_success = True
                 except Exception as err:

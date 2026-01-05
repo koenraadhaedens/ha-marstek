@@ -57,7 +57,7 @@ SENSOR_TYPES: tuple[MarstekSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         data_key="battery",
-        value_fn=lambda data: data.get("bat_temp"),
+        value_fn=lambda data: data.get("bat_temp") / 10.0 if data.get("bat_temp") is not None else None,
     ),
     MarstekSensorEntityDescription(
         key="battery_capacity",
@@ -278,6 +278,19 @@ class MarstekSensor(CoordinatorEntity, SensorEntity):
             return None
 
         if self.entity_description.value_fn:
-            return self.entity_description.value_fn(data)
+            try:
+                value = self.entity_description.value_fn(data)
+                # Handle cases where value_fn returns invalid data
+                if isinstance(value, (int, float)) and value < -999999:
+                    return None
+                return value
+            except (TypeError, ValueError, KeyError) as e:
+                # Log the error for debugging but don't crash
+                import logging
+                logging.getLogger(__name__).debug(
+                    "Error processing sensor %s: %s", 
+                    self.entity_description.key, e
+                )
+                return None
 
         return None
