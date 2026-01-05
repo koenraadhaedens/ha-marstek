@@ -7,7 +7,7 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT = 5.0
+DEFAULT_TIMEOUT = 10.0
 
 
 class MarstekAPI:
@@ -116,7 +116,7 @@ class MarstekAPI:
             sock.bind(('', self.port))
             _LOGGER.debug("Discovery: bound to port %s", self.port)
             
-            sock.settimeout(self.timeout)
+            self.timeout = 10
 
             # Send broadcast
             message = json.dumps(request).encode("utf-8")
