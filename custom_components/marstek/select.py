@@ -67,19 +67,15 @@ class MarstekOperatingModeSelect(CoordinatorEntity, SelectEntity):
         success = False
         
         if option == MODE_AUTO:
-            success = await self.hass.async_add_executor_job(api.set_es_mode_auto)
+            success = await api.set_es_mode_auto()
         elif option == MODE_AI:
-            success = await self.hass.async_add_executor_job(api.set_es_mode_ai)
+            success = await api.set_es_mode_ai()
         elif option == MODE_PASSIVE:
             # Default to 100W for 300 seconds when switching to Passive mode
-            success = await self.hass.async_add_executor_job(
-                api.set_es_mode_passive, 100, 300
-            )
+            success = await api.set_es_mode_passive(100, 300)
         elif option == MODE_MANUAL:
             # Default Manual mode: time_num=0, 00:00-23:59, all week, 100W, enabled
-            success = await self.hass.async_add_executor_job(
-                api.set_es_mode_manual, 0, "00:00", "23:59", 127, 100, 1
-            )
+            success = await api.set_es_mode_manual(0, "00:00", "23:59", 127, 100, 1)
         
         if success:
             await self.coordinator.async_request_refresh()

@@ -1,8 +1,11 @@
 """The Marstek Battery System integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -45,6 +48,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    coordinator = hass.data[DOMAIN].get(entry.entry_id)
+    if coordinator and coordinator.api:
+        try:
+            await coordinator.api.disconnect()
+        except Exception as err:
+            _LOGGER.debug("Error during API cleanup: %s", err)
+    
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 
@@ -64,6 +74,9 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
         self.api = api
         self.entry = entry
         self.device_info = None
+        self._first_update = True
+        self.update_count = 0
+        self.category_last_updated = {}
 
         super().__init__(
             hass,
@@ -73,62 +86,129 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Update data via library."""
+        """Update data via library with tiered polling strategy."""
         try:
+            # Ensure API is connected
+            if not self.api.is_connected:
+                await self.api.connect()
+                
             data = {}
+            had_success = False
+            is_first_update = self._first_update
             
-            # Get device info (only once)
-            if self.device_info is None:
-                self.device_info = await self.hass.async_add_executor_job(
-                    self.api.get_device_info
-                )
+            def _command_kwargs() -> dict[str, Any]:
+                """Use shorter timeouts/attempts during the very first refresh."""
+                if is_first_update and not had_success:
+                    return {"timeout": min(5, 15), "max_attempts": 1}
+                return {}
+
+            def _command_delay() -> float:
+                """Back off a little between calls; go faster while probing initial contact."""
+                return 0.2 if is_first_update and not had_success else 1.0
             
-            # Get all status information
-            wifi_status = await self.hass.async_add_executor_job(
-                self.api.get_wifi_status
-            )
-            if wifi_status:
-                data["wifi"] = wifi_status
+            # Get device info (only on first update and every 10th update)
+            if self.device_info is None or self.update_count % 10 == 0:
+                try:
+                    if self.update_count > 0:
+                        await asyncio.sleep(_command_delay())
+                    device_info = await self.api.get_device_info(**_command_kwargs())
+                    if device_info:
+                        self.device_info = device_info
+                        data["device_info"] = device_info
+                        self.category_last_updated["device"] = time.time()
+                        had_success = True
+                        _LOGGER.debug("Updated device info")
+                except Exception as err:
+                    if is_first_update:
+                        _LOGGER.warning("Failed to get device info on first update: %s", err)
+                    else:
+                        _LOGGER.debug("Failed to get device info: %s", err)
+            elif self.device_info:
+                data["device_info"] = self.device_info
+                
+            # High priority - every update (~30s)
+            try:
+                await asyncio.sleep(_command_delay())
+                bat_status = await self.api.get_battery_status(**_command_kwargs())
+                if bat_status:
+                    data["battery"] = bat_status
+                    self.category_last_updated["battery"] = time.time()
+                    had_success = True
+            except Exception as err:
+                _LOGGER.debug("Failed to get battery status: %s", err)
 
-            ble_status = await self.hass.async_add_executor_job(
-                self.api.get_ble_status
-            )
-            if ble_status:
-                data["ble"] = ble_status
+            try:
+                await asyncio.sleep(_command_delay())
+                es_status = await self.api.get_es_status(**_command_kwargs())
+                if es_status:
+                    data["es"] = es_status
+                    self.category_last_updated["es"] = time.time()
+                    had_success = True
+            except Exception as err:
+                _LOGGER.debug("Failed to get ES status: %s", err)
 
-            bat_status = await self.hass.async_add_executor_job(
-                self.api.get_battery_status
-            )
-            if bat_status:
-                data["battery"] = bat_status
+            # Medium priority - every 5th update (150s)
+            if self.update_count % 5 == 0:
+                try:
+                    await asyncio.sleep(_command_delay())
+                    pv_status = await self.api.get_pv_status(**_command_kwargs())
+                    if pv_status:
+                        data["pv"] = pv_status
+                        self.category_last_updated["pv"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get PV status: %s", err)
 
-            pv_status = await self.hass.async_add_executor_job(
-                self.api.get_pv_status
-            )
-            if pv_status:
-                data["pv"] = pv_status
+                try:
+                    await asyncio.sleep(_command_delay())
+                    es_mode = await self.api.get_es_mode(**_command_kwargs())
+                    if es_mode:
+                        data["es_mode"] = es_mode
+                        self.category_last_updated["es_mode"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get ES mode: %s", err)
 
-            es_status = await self.hass.async_add_executor_job(
-                self.api.get_es_status
-            )
-            if es_status:
-                data["es"] = es_status
+                try:
+                    await asyncio.sleep(_command_delay())
+                    em_status = await self.api.get_em_status(**_command_kwargs())
+                    if em_status:
+                        data["em"] = em_status
+                        self.category_last_updated["em"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get EM status: %s", err)
 
-            es_mode = await self.hass.async_add_executor_job(
-                self.api.get_es_mode
-            )
-            if es_mode:
-                data["es_mode"] = es_mode
+            # Low priority - every 10th update (300s)
+            if self.update_count % 10 == 0:
+                try:
+                    await asyncio.sleep(_command_delay())
+                    wifi_status = await self.api.get_wifi_status(**_command_kwargs())
+                    if wifi_status:
+                        data["wifi"] = wifi_status
+                        self.category_last_updated["wifi"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get wifi status: %s", err)
 
-            em_status = await self.hass.async_add_executor_job(
-                self.api.get_em_status
-            )
-            if em_status:
-                data["em"] = em_status
-
-            data["device_info"] = self.device_info
+                try:
+                    await asyncio.sleep(_command_delay())
+                    ble_status = await self.api.get_ble_status(**_command_kwargs())
+                    if ble_status:
+                        data["ble"] = ble_status
+                        self.category_last_updated["ble"] = time.time()
+                        had_success = True
+                except Exception as err:
+                    _LOGGER.debug("Failed to get BLE status: %s", err)
+            
+            self.update_count += 1
+            self._first_update = False
+            
+            if not had_success and is_first_update:
+                raise UpdateFailed("Could not retrieve any data from device on first update")
             
             return data
 
         except Exception as err:
+            _LOGGER.error("Error communicating with API: %s", err)
             raise UpdateFailed(f"Error communicating with API: {err}") from err
