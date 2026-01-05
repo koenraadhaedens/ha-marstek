@@ -116,7 +116,7 @@ class MarstekAPI:
             sock.bind(('', self.port))
             _LOGGER.debug("Discovery: bound to port %s", self.port)
             
-            self.timeout = 10
+            sock.settimeout(self.timeout)
 
             # Send broadcast
             message = json.dumps(request).encode("utf-8")
