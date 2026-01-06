@@ -57,7 +57,7 @@ SENSOR_TYPES: tuple[MarstekSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         data_key="battery",
-        value_fn=lambda data: data.get("bat_temp"),
+        value_fn=lambda data: data.get("bat_temp") / 10.0 if data.get("bat_temp") is not None else None,
     ),
     MarstekSensorEntityDescription(
         key="battery_capacity",
@@ -77,34 +77,9 @@ SENSOR_TYPES: tuple[MarstekSensorEntityDescription, ...] = (
         data_key="battery",
         value_fn=lambda data: data.get("rated_capacity"),
     ),
-    # PV sensors
-    MarstekSensorEntityDescription(
-        key="pv_power",
-        name="Solar Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="pv",
-        value_fn=lambda data: data.get("pv_power"),
-    ),
-    MarstekSensorEntityDescription(
-        key="pv_voltage",
-        name="Solar Voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="pv",
-        value_fn=lambda data: data.get("pv_voltage"),
-    ),
-    MarstekSensorEntityDescription(
-        key="pv_current",
-        name="Solar Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="pv",
-        value_fn=lambda data: data.get("pv_current"),
-    ),
+    # PV sensors (Solar Power removed)
+
+
     # Energy System sensors
     MarstekSensorEntityDescription(
         key="es_battery_power",
@@ -185,33 +160,9 @@ SENSOR_TYPES: tuple[MarstekSensorEntityDescription, ...] = (
         data_key="em",
         value_fn=lambda data: data.get("total_power"),
     ),
-    MarstekSensorEntityDescription(
-        key="em_phase_a_power",
-        name="Phase A Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="em",
-        value_fn=lambda data: data.get("a_power"),
-    ),
-    MarstekSensorEntityDescription(
-        key="em_phase_b_power",
-        name="Phase B Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="em",
-        value_fn=lambda data: data.get("b_power"),
-    ),
-    MarstekSensorEntityDescription(
-        key="em_phase_c_power",
-        name="Phase C Power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        data_key="em",
-        value_fn=lambda data: data.get("c_power"),
-    ),
+
+
+
     # WiFi sensor
     MarstekSensorEntityDescription(
         key="wifi_rssi",
@@ -278,6 +229,19 @@ class MarstekSensor(CoordinatorEntity, SensorEntity):
             return None
 
         if self.entity_description.value_fn:
-            return self.entity_description.value_fn(data)
+            try:
+                value = self.entity_description.value_fn(data)
+                # Handle cases where value_fn returns invalid data
+                if isinstance(value, (int, float)) and value < -999999:
+                    return None
+                return value
+            except (TypeError, ValueError, KeyError) as e:
+                # Log the error for debugging but don't crash
+                import logging
+                logging.getLogger(__name__).debug(
+                    "Error processing sensor %s: %s", 
+                    self.entity_description.key, e
+                )
+                return None
 
         return None

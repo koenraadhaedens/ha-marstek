@@ -73,9 +73,7 @@ class MarstekPassivePowerNumber(CoordinatorEntity, NumberEntity):
         api = self.coordinator.api
         
         # Set passive mode with the new power value and default countdown of 300 seconds
-        success = await self.hass.async_add_executor_job(
-            api.set_es_mode_passive, int(value), 300
-        )
+        success = await api.set_es_mode_passive(int(value), 300)
         
         if success:
             await self.coordinator.async_request_refresh()

@@ -30,7 +30,21 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     api = MarstekAPI(host=data[CONF_HOST], port=data.get(CONF_PORT, DEFAULT_PORT))
 
     # Try to get device info
-    device_info = await hass.async_add_executor_job(api.get_device_info)
+    try:
+        await api.connect()
+        device_info = await api.get_device_info(timeout=10, max_attempts=2)
+        await api.disconnect()
+    except OSError as e:
+        if "Address already in use" in str(e):
+            raise CannotConnect("Port 30000 is in use. Please close other Marstek applications and try again.")
+        else:
+            raise CannotConnect(f"Network error: {e}")
+    except Exception as e:
+        try:
+            await api.disconnect()
+        except:
+            pass
+        raise CannotConnect(f"Connection failed: {e}")
 
     if not device_info:
         raise CannotConnect
