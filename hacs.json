@@ -1,7 +1,0 @@
-{
-  "name": "Marstek Battery System",
-  "render_readme": true,
-  "domains": ["marstek"],
-  "iot_class": "Local Polling",
-  "homeassistant": "2023.1.0"
-}
