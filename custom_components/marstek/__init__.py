@@ -28,9 +28,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Marstek Battery System from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
+    # Use longer timeout and enable retries for more reliable communication
     api = MarstekAPI(
         host=entry.data["host"],
         port=entry.data.get("port", 30000),
+        timeout=10.0,  # Increased to 10 seconds to match error logs
+        retries=3,     # Add retry support
     )
 
     coordinator = MarstekDataUpdateCoordinator(hass, api, entry)
@@ -74,61 +77,45 @@ class MarstekDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update data via library."""
-        try:
-            data = {}
-            
-            # Get device info (only once)
-            if self.device_info is None:
+        data = {}
+        api_errors = []
+        
+        # Get device info (only once)
+        if self.device_info is None:
+            try:
                 self.device_info = await self.hass.async_add_executor_job(
                     self.api.get_device_info
                 )
-            
-            # Get all status information
-            wifi_status = await self.hass.async_add_executor_job(
-                self.api.get_wifi_status
-            )
-            if wifi_status:
-                data["wifi"] = wifi_status
+            except Exception as err:
+                api_errors.append(f"Device info: {err}")
+        
+        # Get all status information - continue even if some calls fail
+        async def safe_api_call(api_method, data_key):
+            try:
+                result = await self.hass.async_add_executor_job(api_method)
+                if result:
+                    data[data_key] = result
+            except Exception as err:
+                api_errors.append(f"{data_key}: {err}")
+                _LOGGER.debug("API call failed for %s: %s", data_key, err)
 
-            ble_status = await self.hass.async_add_executor_job(
-                self.api.get_ble_status
-            )
-            if ble_status:
-                data["ble"] = ble_status
+        # Execute all API calls
+        await safe_api_call(self.api.get_wifi_status, "wifi")
+        await safe_api_call(self.api.get_ble_status, "ble")
+        await safe_api_call(self.api.get_battery_status, "battery")
+        await safe_api_call(self.api.get_pv_status, "pv")
+        await safe_api_call(self.api.get_es_status, "es")
+        await safe_api_call(self.api.get_es_mode, "es_mode")
+        await safe_api_call(self.api.get_em_status, "em")
 
-            bat_status = await self.hass.async_add_executor_job(
-                self.api.get_battery_status
-            )
-            if bat_status:
-                data["battery"] = bat_status
-
-            pv_status = await self.hass.async_add_executor_job(
-                self.api.get_pv_status
-            )
-            if pv_status:
-                data["pv"] = pv_status
-
-            es_status = await self.hass.async_add_executor_job(
-                self.api.get_es_status
-            )
-            if es_status:
-                data["es"] = es_status
-
-            es_mode = await self.hass.async_add_executor_job(
-                self.api.get_es_mode
-            )
-            if es_mode:
-                data["es_mode"] = es_mode
-
-            em_status = await self.hass.async_add_executor_job(
-                self.api.get_em_status
-            )
-            if em_status:
-                data["em"] = em_status
-
-            data["device_info"] = self.device_info
-            
-            return data
-
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+        data["device_info"] = self.device_info
+        
+        # Only raise UpdateFailed if we got no data at all
+        if not data or (len(data) == 1 and "device_info" in data):
+            raise UpdateFailed(f"All API calls failed. Errors: {'; '.join(api_errors)}")
+        
+        # Log warnings if some calls failed but we got partial data
+        if api_errors:
+            _LOGGER.warning("Some API calls failed: %s", '; '.join(api_errors))
+        
+        return data

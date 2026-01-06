@@ -1,0 +1,144 @@
+# Marstek Integration - Advanced Configuration Options
+# Add these to your configuration.yaml file to customize the integration behavior
+
+# Adjust logging level for troubleshooting
+logger:
+  default: info
+  logs:
+    custom_components.marstek: info  # Change to 'debug' for detailed logging
+    custom_components.marstek.marstek_api: warning  # Reduce API timeout warnings
+
+# Optional: Create template sensors for better integration with Energy Dashboard
+template:
+  - sensor:
+      # Battery charge power (only when charging - positive values)
+      - name: "Marstek Battery Charging Power"
+        unique_id: marstek_battery_charging_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set power = states('sensor.marstek_battery_power') | float(0) %}
+          {{ [0, -power] | max }}
+        availability: >
+          {{ states('sensor.marstek_battery_power') not in ['unknown', 'unavailable'] }}
+
+      # Battery discharge power (only when discharging - positive values)  
+      - name: "Marstek Battery Discharging Power"
+        unique_id: marstek_battery_discharging_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set power = states('sensor.marstek_battery_power') | float(0) %}
+          {{ [0, power] | max }}
+        availability: >
+          {{ states('sensor.marstek_battery_power') not in ['unknown', 'unavailable'] }}
+
+      # Calculate battery health percentage
+      - name: "Marstek Battery Health"
+        unique_id: marstek_battery_health
+        unit_of_measurement: "%"
+        state_class: measurement
+        state: >
+          {% set current = states('sensor.marstek_battery_capacity') | float(0) %}
+          {% set rated = states('sensor.marstek_battery_rated_capacity') | float(1) %}
+          {{ ((current / rated) * 100) | round(1) if rated > 0 else 0 }}
+        availability: >
+          {{ states('sensor.marstek_battery_capacity') not in ['unknown', 'unavailable'] and
+             states('sensor.marstek_battery_rated_capacity') not in ['unknown', 'unavailable'] }}
+
+# Optional: Utility meter for tracking daily energy flows
+utility_meter:
+  marstek_daily_solar_production:
+    source: sensor.marstek_total_solar_energy
+    cycle: daily
+    name: Daily Solar Production
+    
+  marstek_daily_battery_charging:
+    source: sensor.marstek_battery_charging_energy  # Create this template if needed
+    cycle: daily
+    name: Daily Battery Charging
+    
+  marstek_daily_battery_discharging:
+    source: sensor.marstek_battery_discharging_energy  # Create this template if needed
+    cycle: daily
+    name: Daily Battery Discharging
+
+# Optional: Automations for reliability improvements
+automation:
+  # Restart integration if it becomes unavailable
+  - id: marstek_restart_on_failure
+    alias: "Marstek: Restart Integration on Failure"
+    description: "Restart the Marstek integration if all sensors become unavailable"
+    trigger:
+      - platform: state
+        entity_id: sensor.marstek_battery_state_of_charge
+        to: 'unavailable'
+        for:
+          minutes: 5  # Wait 5 minutes before restarting
+    condition:
+      # Only restart if multiple key sensors are unavailable
+      - condition: state
+        entity_id: sensor.marstek_battery_power
+        state: 'unavailable'
+      - condition: state
+        entity_id: sensor.marstek_grid_power
+        state: 'unavailable'
+    action:
+      - service: homeassistant.reload_config_entry
+        target:
+          device_id: !device_id "your_marstek_device_id_here"  # Replace with actual device ID
+      - service: notify.persistent_notification
+        data:
+          title: "Marstek Integration Restarted"
+          message: "The Marstek integration was automatically restarted due to communication failure."
+          notification_id: "marstek_restart"
+
+  # Alert for prolonged connection issues
+  - id: marstek_connection_alert
+    alias: "Marstek: Connection Issue Alert"
+    description: "Send alert when device has connection issues"
+    trigger:
+      - platform: state
+        entity_id: sensor.marstek_battery_state_of_charge
+        to: 'unavailable'
+        for:
+          minutes: 10
+    action:
+      - service: notify.persistent_notification
+        data:
+          title: "⚠️ Marstek Connection Issue"
+          message: >
+            The Marstek device has been unavailable for 10+ minutes.
+            Check network connection and device status in the Marstek app.
+          notification_id: "marstek_connection_issue"
+
+# Optional: Scripts for manual troubleshooting
+script:
+  marstek_reload_integration:
+    alias: "Reload Marstek Integration"
+    sequence:
+      - service: homeassistant.reload_config_entry
+        target:
+          device_id: !device_id "your_marstek_device_id_here"  # Replace with actual device ID
+    mode: single
+
+  marstek_test_connection:
+    alias: "Test Marstek Connection"
+    sequence:
+      # Force an update of all sensors
+      - service: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.marstek_battery_state_of_charge
+            - sensor.marstek_battery_power
+            - sensor.marstek_grid_power
+      - delay:
+          seconds: 5
+      - service: notify.persistent_notification
+        data:
+          title: "Marstek Connection Test"
+          message: >
+            Connection test completed. Check sensor values to verify communication.
+          notification_id: "marstek_test"

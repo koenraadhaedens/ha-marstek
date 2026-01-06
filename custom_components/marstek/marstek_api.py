@@ -2,30 +2,69 @@
 import json
 import logging
 import socket
+import time
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT = 5.0
+DEFAULT_TIMEOUT = 10.0
+DEFAULT_RETRIES = 3
+RETRY_DELAY = 1.0
 
 
 class MarstekAPI:
     """API client for Marstek devices using UDP JSON-RPC."""
 
-    def __init__(self, host: str, port: int = 30000, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(self, host: str, port: int = 30000, timeout: float = DEFAULT_TIMEOUT, retries: int = DEFAULT_RETRIES):
         """Initialize the API client."""
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.retries = retries
         self._request_id = 0
 
     def _get_next_id(self) -> int:
         """Get next request ID."""
         self._request_id += 1
         return self._request_id
+    
+    def _send_request_with_retry(self, method: str, params: dict | None = None) -> dict | None:
+        """Send request with retry logic."""
+        last_error = None
+        
+        for attempt in range(1, self.retries + 1):
+            try:
+                result = self._send_request_once(method, params)
+                if result is not None:
+                    return result
+                # If result is None, treat as failure and retry
+                last_error = f"API returned None result"
+            except Exception as err:
+                last_error = str(err)
+                _LOGGER.warning(
+                    "Command %s timed out after %ss (attempt %d/%d, host=%s)",
+                    method,
+                    self.timeout,
+                    attempt,
+                    self.retries,
+                    self.host
+                )
+            
+            # Don't delay after the last attempt
+            if attempt < self.retries:
+                time.sleep(RETRY_DELAY)
+        
+        _LOGGER.error(
+            "Command %s failed after %d attempts (host=%s): %s",
+            method,
+            self.retries,
+            self.host,
+            last_error
+        )
+        return None
 
-    def _send_request(self, method: str, params: dict | None = None) -> dict | None:
-        """Send a JSON-RPC request via UDP."""
+    def _send_request_once(self, method: str, params: dict | None = None) -> dict | None:
+        """Send a single JSON-RPC request via UDP."""
         if params is None:
             params = {"id": 0}
 
@@ -35,6 +74,7 @@ class MarstekAPI:
             "params": params,
         }
 
+        sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.settimeout(self.timeout)
@@ -48,8 +88,6 @@ class MarstekAPI:
             data, _ = sock.recvfrom(4096)
             response = json.loads(data.decode("utf-8"))
             _LOGGER.debug("Received response: %s", response)
-
-            sock.close()
 
             # Check for errors
             if "error" in response:
@@ -66,14 +104,18 @@ class MarstekAPI:
             return None
 
         except socket.timeout:
-            _LOGGER.error("Timeout communicating with device at %s:%s", self.host, self.port)
-            return None
+            raise Exception(f"Timeout after {self.timeout}s")
         except json.JSONDecodeError as err:
-            _LOGGER.error("Failed to decode JSON response: %s", err)
-            return None
+            raise Exception(f"Failed to decode JSON response: {err}")
         except Exception as err:
-            _LOGGER.error("Error communicating with device: %s", err)
-            return None
+            raise Exception(f"Communication error: {err}")
+        finally:
+            if sock:
+                sock.close()
+    
+    def _send_request(self, method: str, params: dict | None = None) -> dict | None:
+        """Send a JSON-RPC request via UDP with retry logic."""
+        return self._send_request_with_retry(method, params)
 
     def discover_devices(self, broadcast_address: str = "255.255.255.255") -> list[dict]:
         """Discover Marstek devices on the network."""
