@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Marstek Device Setup",
+        "description": "Enter the connection details for your Marstek device. Make sure the Open API is enabled in the Marstek mobile app.",
+        "data": {
+          "host": "Host (IP Address)",
+          "port": "UDP Port (default: 30000)",
+          "update_interval": "Update Interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device. Please check the IP address, UDP port, and ensure the Open API is enabled in the Marstek app.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}

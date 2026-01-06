@@ -1,0 +1,12 @@
+{
+  "domain": "marstek",
+  "name": "Marstek Device Integration",
+  "codeowners": ["@yourusername"],
+  "config_flow": true,
+  "documentation": "https://github.com/yourusername/ha-marstek",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/yourusername/ha-marstek/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
