@@ -13,7 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import CONF_PORT, CONF_UPDATE_INTERVAL, DEFAULT_UDP_PORT, DEFAULT_UPDATE_INTERVAL, DOMAIN
-from .marstek_api import MarstekAPI, MarstekAPIError
+from .marstek_api import MarstekUDPClient, MarstekAPIError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +31,15 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    api = MarstekAPI(data[CONF_HOST], data.get(CONF_PORT, DEFAULT_UDP_PORT))
+    api = MarstekUDPClient(hass, host=data[CONF_HOST], port=data.get(CONF_PORT, DEFAULT_UDP_PORT), remote_port=data.get(CONF_PORT, DEFAULT_UDP_PORT))
     
     try:
+        await api.connect()
         device_info = await api.get_device_info()
+        
+        if not device_info:
+            raise CannotConnect("Failed to get device information")
+        
         device_model = device_info.get("device", "Unknown")
         return {
             "title": f"Marstek {device_model} ({data[CONF_HOST]})", 
@@ -46,6 +51,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except Exception as exc:
         _LOGGER.exception("Unexpected error connecting to Marstek device: %s", exc)
         raise CannotConnect from exc
+    finally:
+        await api.disconnect()
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
