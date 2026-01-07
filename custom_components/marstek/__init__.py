@@ -27,6 +27,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     )
     
+    # Connect the API client
+    try:
+        await coordinator.api.connect()
+    except Exception as err:
+        _LOGGER.error("Failed to connect to Marstek device: %s", err)
+        return False
+    
     await coordinator.async_config_entry_first_refresh()
     
     hass.data[DOMAIN][entry.entry_id] = coordinator
@@ -38,6 +45,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    
+    # Disconnect the API client
+    try:
+        await coordinator.async_shutdown()
+    except Exception as err:
+        _LOGGER.error("Error shutting down coordinator: %s", err)
+    
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
     
