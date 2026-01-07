@@ -273,7 +273,13 @@ class MarstekSensor(CoordinatorEntity[MarstekDataUpdateCoordinator], SensorEntit
         if component_data is None:
             return None
             
-        return component_data.get(self._sensor_key)
+        value = component_data.get(self._sensor_key)
+        
+        # Convert temperature from tenths of degrees to degrees Celsius
+        if self._sensor_key == "bat_temp" and value is not None:
+            return value / 10.0
+            
+        return value
 
     @property
     def available(self) -> bool:
